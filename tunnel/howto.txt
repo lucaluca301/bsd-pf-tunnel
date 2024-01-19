@@ -1,0 +1,174 @@
+pkg install nginx
+echo 'nginx_enable="YES"' >> /etc/rc.conf
+
+
+
+pkg install php80
+pkg install php80-extensions
+echo 'php_fpm_enable="YES"' >> /etc/rc.conf
+
+
+
+open /usr/local/etc/php-fpm.d/www.conf
+1) search: listen = 127.0.0.1:9000
+2) replace with: listen = /var/run/php-fpm.sock
+3) search: ;listen.owner = www
+4) replace with: listen.owner = www
+5) search: ;listen.group = www
+6) replace with: listen.group = www
+7) search: ;listen.mode = www
+8) replace with: listen.mode = www
+
+
+
+open /usr/local/etc/nginx/nginx.conf
+1) search: #user  nobody;
+2) replace with: user  www;
+3) search: worker_processes  1;
+4) replace with: worker_processes        auto;
+5) search: worker_connections  1024;
+6) replace with: worker_connections  4096;
+7) under: worker_connections  4096; paste: multi_accept  on;
+8) search: include       mime.types;
+9) under it add:
+    limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:1m;
+    limit_req_zone $binary_remote_addr zone=req_limit_per_ip:1m rate=1r/s;
+10) search:
+    #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+    #                  '$status $body_bytes_sent "$http_referer" '
+    #                  '"$http_user_agent" "$http_x_forwarded_for"';
+
+    #access_log  logs/access.log  main;
+11) replace with:
+    log_format  main    '$remote_addr - $remote_user [$time_local] "$request" '
+                        '"$status" $body_bytes_sent  "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for" "$scheme://$host:$server_port$request_uri"' ; 
+    log_format  bytes   '$body_bytes_sent';
+    access_log          /var/log/nginx/access.log  main;
+12) search: #tcp_nopush     on;
+13) replace with: tcp_nopush     on;
+14) search: tcp_nopush     on;
+15) under it add: tcp_nodelay    on;
+16) search: keepalive_timeout  65;
+17) replace with: keepalive_timeout  15;
+18) search:
+    #gzip  on;
+19) replace with:
+    gzip                            on;
+    gzip_comp_level                 9;
+    gzip_min_length                 512;
+    gzip_buffers                    8 64k;
+    gzip_types                      text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml application/x-font-ttf font/opentype;
+    gzip_proxied                    any;
+
+    client_header_timeout           1m;
+    client_body_timeout             1m;
+    client_header_buffer_size       2k;
+    client_body_buffer_size         256k;
+    client_max_body_size            100m;
+    large_client_header_buffers     4   8k;
+    send_timeout                    30;
+    reset_timedout_connection       on;
+    server_tokens                   off;
+    server_name_in_redirect         off;
+    server_names_hash_max_size      512;
+    variables_hash_bucket_size      2024;
+
+    proxy_redirect              off;
+    proxy_set_header            Host $host;
+    proxy_set_header            X-Real-IP $remote_addr;
+    proxy_set_header            X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass_header           Set-Cookie;
+    proxy_http_version          1.1;
+    proxy_intercept_errors      on;
+    proxy_max_temp_file_size    0;
+    proxy_connect_timeout       90;
+    proxy_send_timeout          90;
+    proxy_read_timeout          90;
+    proxy_buffers               32 4k;
+    proxy_ssl_session_reuse     off;
+
+    proxy_cache_path /usr/local/etc/nginx/cache levels=1:2 keys_zone=cache:10m inactive=60m max_size=1G;
+    proxy_temp_path  /usr/local/etc/nginx/cache/temp;
+    proxy_ignore_headers Expires Cache-Control;
+    proxy_cache_use_stale error timeout invalid_header http_502;
+20) search:
+        listen       80;
+        server_name  localhost;
+
+        #charset koi8-r;
+
+        #access_log  logs/host.access.log  main;
+
+        location / {
+            root   /usr/local/www/nginx;
+            index  index.html index.htm;
+        }
+
+        #error_page  404              /404.html;
+
+        # redirect server error pages to the static page /50x.html
+        #
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/local/www/nginx-dist;
+        }
+21) replace with:
+        listen      0.0.0.0:32511;
+        server_name ~^.*$;
+
+        if ($http_user_agent != "AdiuhbdjkbBNA") {
+            return 444;
+        }
+
+        location /blacklist.txt {
+            return 444;
+        }
+
+        location ~ \.php$ {
+            root   /usr/local/www/nginx;
+            try_files $uri =404;
+            fastcgi_split_path_info ^(.+\.php)(/.+)$;
+            fastcgi_pass unix:/var/run/php-fpm.sock;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            include fastcgi_params;
+        }
+
+        index index.php index.html index.htm;
+        try_files $uri $uri/ =404;
+
+
+
+service php-fpm start
+service nginx start
+
+cd /usr/local/www/nginx-dist
+rm -rf 50x.html EXAMPLE_DIRECTORY-DONT_ADD_OR_TOUCH_ANYTHING index.html
+
+here add the files from the folder.
+
+echo 'pf_enable="YES"' >> /etc/rc.conf
+echo 'pf_rules="/pf/conf.txt"' >> /etc/rc.conf
+echo 'pflog_enable="YES"' >> /etc/rc.conf
+echo 'pflog_logfile="/var/log/pflog"' >> /etc/rc.conf
+sysctl net.pf.request_maxcount=500000
+
+cd /
+mkdir pf
+
+now open and config: /pf/conf
+now open and config: /pf/IPs/mysql.txt and add you're website IP
+now open and config: /pf/IPs/allowed.txt and add you're server IP
+
+
+
+service pf onestart
+
+then if all good
+
+service pf stop
+
+
+
+service pf start
